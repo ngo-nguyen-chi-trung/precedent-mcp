@@ -1,0 +1,11 @@
+syntax = "proto3";
+package precedentmcp.v1;
+option go_package = "github.com/ngo/precedent_mcp/gen/proto/v1;precedentmcpv1";
+
+message Empty {}
+
+message RPCError {
+  int32  code    = 1;
+  string message = 2;
+  bytes  data    = 3;
+}

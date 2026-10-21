@@ -1,0 +1,31 @@
+syntax = "proto3";
+package precedentmcp.v1;
+option go_package = "github.com/ngo/precedent_mcp/gen/proto/v1;precedentmcpv1";
+
+import "communication/common.proto";
+
+message Tool {
+  string name          = 1;
+  string description   = 2;
+  bytes  input_schema  = 3;
+  bytes  output_schema = 4;
+}
+
+message ToolListResponse {
+  repeated Tool tools = 1;
+}
+
+message ToolCallRequest {
+  string name      = 1;
+  bytes  arguments = 2;
+}
+
+message ToolCallResponse {
+  bytes data     = 1;
+  bool  is_error = 2;
+}
+
+service ToolService {
+  rpc ListTools (Empty)           returns (ToolListResponse);
+  rpc CallTool  (ToolCallRequest) returns (ToolCallResponse);
+}

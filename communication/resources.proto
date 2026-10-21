@@ -1,0 +1,41 @@
+syntax = "proto3";
+package precedentmcp.v1;
+option go_package = "github.com/ngo/precedent_mcp/gen/proto/v1;precedentmcpv1";
+
+import "communication/common.proto";
+
+message Annotations {
+  repeated string audience = 1;
+}
+
+message Resource {
+  string      uri         = 1;
+  string      name        = 2;
+  string      description = 3;
+  string      mime_type   = 4;
+  int64       size        = 5;
+  Annotations annotations = 6;
+}
+
+message ResourceListResponse {
+  repeated Resource resources = 1;
+}
+
+message ResourceReadRequest {
+  string uri = 1;
+}
+
+message ResourceContents {
+  string uri       = 1;
+  string mime_type = 2;
+  string text      = 3;
+}
+
+message ResourceReadResponse {
+  repeated ResourceContents contents = 1;
+}
+
+service ResourceService {
+  rpc ListResources (Empty)               returns (ResourceListResponse);
+  rpc ReadResource  (ResourceReadRequest) returns (ResourceReadResponse);
+}

@@ -1,0 +1,32 @@
+# precedent-refine examples
+
+Examples for the precedent-refine skill. Reference only; write examples that match the agent's task context under `## Examples (at most 15 lines)` in SKILL.md.
+
+## Coding: a load test changes the proposal
+
+| Turn | Who | Message or tool call |
+|---|---|---|
+| 1 | User | "Load test done: p99 is 420 milliseconds. Batching was not enough; let us add the Redis cache after all." |
+| 2 | Agent | "Fact: the trace puts 300 of 420 milliseconds in the tax service call; the database takes 40. Reasoning: the tax call runs after promotions." |
+| 3 | User | "So a cache would barely help. Can the tax call run in parallel with promotions?" |
+| 4 | Agent | "Fact: the tax call and promotions are independent. Reasoning: a parallel call keeps batching and overlaps the 300-millisecond tax call with promotions." |
+| 5 | Agent | `retrieve_decisions` `{"query": "Batch promotion lookups in checkout"}` returns `decision_id` `44444444-4444-4444-8444-444444444444`, `proposed` |
+| 6 | Agent | `record_decision` `{"title": "Batch promotion lookups in checkout", "status": "proposed", "Details": {"situation": "Checkout p99 latency is 420 milliseconds after batching; 300 milliseconds are in the tax service call.", "decision": "Load promotions in one batched query and call the tax service in parallel.", "rationale": "Targets the measured bottleneck without stale data. Accept when a load test shows p99 under 300 milliseconds.", "options": [{"name": "Per-promotion queries", "cons": ["120 queries per request"], "verdict": "replaced"}, {"name": "Redis cache", "pros": ["fast to ship"], "cons": ["stale promotions", "the database part is only 40 milliseconds"], "verdict": "rejected: correctness risk, little gain"}, {"name": "Read replica", "pros": ["no code change"], "cons": ["keeps 120 queries", "replication lag"], "verdict": "rejected"}, {"name": "Batched query with a parallel tax call", "pros": ["targets the 300 millisecond tax call"], "cons": ["checkout code change"], "verdict": "chosen"}], "tradeoffs": ["A checkout code change instead of an infrastructure change"], "facts": [{"text": "120 queries per checkout request before batching", "source": "checkout trace, thread 11111111-1111-4111-8111-111111111111"}, {"text": "300 of 420 milliseconds are in the tax service call; the database part is 40 milliseconds", "source": "first load test trace"}]}, "tags": ["checkout", "performance"], "supersedes": "44444444-4444-4444-8444-444444444444"}` |
+| 7 | Tool | `{"decision_id": "66666666-6666-4666-8666-666666666666"}` |
+| 8 | User | "Second load test: p99 is 240 milliseconds. Ship it." |
+| 9 | Agent | `retrieve_decisions` `{"query": "Batch promotion lookups in checkout"}` returns `decision_id` `66666666-6666-4666-8666-666666666666`, `proposed` |
+| 10 | Agent | `record_decision` `{"title": "Batch promotion lookups in checkout", "status": "accepted", "Details": {"situation": "Checkout p99 latency is 420 milliseconds after batching; 300 milliseconds are in the tax service call.", "decision": "Load promotions in one batched query and call the tax service in parallel.", "rationale": "Targets the measured bottleneck without stale data; the second load test shows 240 milliseconds.", "options": [{"name": "Per-promotion queries", "cons": ["120 queries per request"], "verdict": "replaced"}, {"name": "Redis cache", "pros": ["fast to ship"], "cons": ["stale promotions", "the database part is only 40 milliseconds"], "verdict": "rejected: correctness risk, little gain"}, {"name": "Read replica", "pros": ["no code change"], "cons": ["keeps 120 queries", "replication lag"], "verdict": "rejected"}, {"name": "Batched query with a parallel tax call", "pros": ["targets the 300 millisecond tax call"], "cons": ["checkout code change"], "verdict": "chosen"}], "tradeoffs": ["A checkout code change instead of an infrastructure change"], "facts": [{"text": "120 queries per checkout request before batching", "source": "checkout trace, thread 11111111-1111-4111-8111-111111111111"}, {"text": "300 of 420 milliseconds are in the tax service call; the database part is 40 milliseconds", "source": "first load test trace"}, {"text": "p99 is 240 milliseconds after the change", "source": "second load test"}]}, "tags": ["checkout", "performance"], "supersedes": "66666666-6666-4666-8666-666666666666"}` |
+| 11 | Agent | "Recorded: decision `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`, `accepted`, superseding decision `66666666-6666-4666-8666-666666666666`." |
+
+## Design: a proposal is abandoned, and the reason is kept
+
+| Turn | Who | Message or tool call |
+|---|---|---|
+| 1 | User | "The proposal to split refunds into their own service: I want to drop it." |
+| 2 | Agent | "Context: the proposal came from refund deployments blocking order releases. Needed: whether deployments still block releases." |
+| 3 | User | "Yes. Since the outbox change the teams deploy independently. A split now only adds a service to run." |
+| 4 | Agent | "Fact: teams deploy independently since the outbox change. Reasoning: a separate service only adds operating cost; the recorded rejection blocks it without new facts." |
+| 5 | Agent | `retrieve_decisions` `{"query": "Separate refund service"}` |
+| 6 | Tool | A newer `proposed` version, `decision_id` `bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb`, which superseded `77777777-7777-4777-8777-777777777777` |
+| 7 | Agent | `record_decision` `{"title": "Separate refund service", "status": "accepted", "Details": {"situation": "Refund deployments used to block order releases.", "decision": "Not adopted: separate refund service, since the teams already deploy independently; refunds stay in the order service.", "rationale": "Since the outbox change the teams deploy independently; another service only adds operating cost.", "options": [{"name": "Separate refund service", "pros": ["independent refund deployments"], "cons": ["one more service to run"], "verdict": "rejected: the teams already deploy independently"}, {"name": "Refunds in the order service", "pros": ["no new service"], "verdict": "kept"}], "facts": [{"text": "The teams deploy independently since the outbox change", "source": "the user"}]}, "tags": ["refunds", "architecture"], "supersedes": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}` |
+| 8 | Agent | "Recorded: separate refund service not adopted, superseding the newest version `bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb`, which a teammate revised yesterday." |

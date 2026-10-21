@@ -1,0 +1,5 @@
+name: unknown-key
+description: Carries a key that metadata does not allow
+license: MIT
+digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+size: 1

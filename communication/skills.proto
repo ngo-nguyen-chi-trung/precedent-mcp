@@ -1,0 +1,39 @@
+syntax = "proto3";
+package precedentmcp.v1;
+option go_package = "github.com/ngo/precedent_mcp/gen/proto/v1;precedentmcpv1";
+
+import "communication/common.proto";
+
+message SkillFrontmatter {
+  string name        = 1;
+  string description = 2;
+}
+
+message SkillResource {
+  string uri    = 1;
+  string digest = 2;
+  int64  size   = 3;
+}
+
+message SkillEntry {
+  string                 uri         = 1;
+  SkillFrontmatter       frontmatter = 2;
+  repeated SkillResource resources   = 3;
+}
+
+message SkillListResponse {
+  repeated SkillEntry skills = 1;
+}
+
+message SkillGetRequest {
+  string uri = 1;
+}
+
+message SkillGetResponse {
+  SkillEntry skill = 1;
+}
+
+service SkillService {
+  rpc ListSkills (Empty)           returns (SkillListResponse);
+  rpc GetSkill   (SkillGetRequest) returns (SkillGetResponse);
+}

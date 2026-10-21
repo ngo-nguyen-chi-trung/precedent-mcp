@@ -1,0 +1,6 @@
+tools:
+- name: echo
+  description: Input schema type is not a JSON type.
+  input_schema:
+    type: "5"
+    properties: {}

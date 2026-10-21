@@ -1,0 +1,20 @@
+template: testify
+filename: mocks_test.go
+packages:
+  github.com/ngo/precedent_mcp/internal/db:
+    config:
+      dir: test/internal/service
+      pkgname: service_test
+    interfaces:
+      ContextStore: {}
+      DecisionStore: {}
+  github.com/ngo/precedent_mcp/gen/proto/v1:
+    config:
+      include-auto-generated: true
+      dir: test/gateway
+      pkgname: gateway_test
+    interfaces:
+      CapabilityServiceClient: {}
+      ToolServiceClient: {}
+      ResourceServiceClient: {}
+      SkillServiceClient: {}

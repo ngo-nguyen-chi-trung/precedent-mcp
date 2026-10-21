@@ -1,0 +1,26 @@
+tools:
+- name: echo
+  description: Echo the input back.
+  input_schema:
+    type: object
+    properties:
+      text:
+        type: string
+        minLength: 1
+      id:
+        type: string
+        format: uuid
+    required: [text]
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      properties:
+        text:
+          type: string
+      required: [text]
+- name: ping
+  description: No arguments.
+  input_schema:
+    type: object
+    properties: {}

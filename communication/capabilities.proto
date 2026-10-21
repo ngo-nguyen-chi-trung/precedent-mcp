@@ -1,0 +1,14 @@
+syntax = "proto3";
+package precedentmcp.v1;
+option go_package = "github.com/ngo/precedent_mcp/gen/proto/v1;precedentmcpv1";
+
+import "communication/common.proto";
+
+message DiscoverResponse {
+  repeated string supported_versions = 1;
+  repeated string extensions         = 2;
+}
+
+service CapabilityService {
+  rpc Discover (Empty) returns (DiscoverResponse);
+}

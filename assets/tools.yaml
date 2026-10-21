@@ -1,0 +1,431 @@
+shared:
+  tool_error: &tool_error
+    type: object
+    description: Returned with isError true when the tool fails.
+    properties:
+      code:
+        type: string
+        enum: [invalid_argument, internal, decision_not_found]
+      message:
+        type: string
+    required: [code, message]
+    additionalProperties: false
+  sourced_note: &sourced_note
+    type: object
+    properties:
+      text:
+        type: string
+      source:
+        type: string
+    required: [text]
+    additionalProperties: false
+  decision_review: &decision_review
+    type: object
+    description: The decision's current verdict; absent until the decision is first reviewed.
+    properties:
+      score:
+        type: integer
+        minimum: 1
+        maximum: 5
+      reason:
+        type: string
+      reviewed_at:
+        type: string
+        format: date-time
+    required: [score, reason, reviewed_at]
+    additionalProperties: false
+tools:
+- name: add_context
+  description: |-
+    What: Save 1 to 10 context entries in one call; each entry names its own thread.
+    Who: Any agent.
+    Where: Server-side store, shared across sessions.
+    When: At a natural break in the conversation, with everything worth recalling since the last call (facts, preferences, outcomes).
+    Why: So it can be found later with retrieve_context or get_context_thread, without interrupting the conversation for each item.
+    How: Returns {succeeded, failed}. Resend only failed positions; a resent saved entry moves to the end of its thread.
+  input_schema:
+    type: object
+    properties:
+      entries:
+        type: array
+        minItems: 1
+        maxItems: 10
+        description: The context entries to store, oldest first.
+        items:
+          type: object
+          properties:
+            thread_id:
+              type: string
+              format: uuid
+              description: UUID of the thread this entry belongs to. Generate a new UUID to start a thread; reuse one to add to it.
+            context:
+              type: string
+              minLength: 1
+              description: The context to store.
+          required: [thread_id, context]
+          additionalProperties: false
+    required: [entries]
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      properties:
+        succeeded:
+          type: array
+          description: Positions in entries, from 0, that were saved.
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 0
+        failed:
+          type: array
+          description: Positions in entries, from 0, that were not saved.
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 0
+      required: [succeeded, failed]
+      additionalProperties: false
+    - *tool_error
+- name: retrieve_context
+  description: |-
+    What: Search stored context entries by meaning and keywords.
+    Who: Any agent.
+    Where: Entries across all threads.
+    When: Before work that may depend on earlier decisions, facts or work, or when the user refers to something from before.
+    Why: To recover prior context instead of guessing or asking again.
+    How: Returns {results: [{thread_id, context, score}]}, best match first. Load the rest of a result's thread with get_context_thread.
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        minLength: 1
+        description: What to search for in entry content.
+      top_n:
+        type: integer
+        minimum: 1
+        maximum: 20
+        description: Maximum number of entries to return. Default 20.
+    required: [query]
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      properties:
+        results:
+          type: array
+          description: Nearest entries, not confirmed matches; judge each context yourself. Empty means nothing is stored.
+          items:
+            type: object
+            properties:
+              thread_id:
+                type: string
+                format: uuid
+              context:
+                type: string
+              score:
+                type: number
+                description: How closely the entry matches, compared with the other results of this search.
+            required: [thread_id, context]
+            additionalProperties: false
+      required: [results]
+      additionalProperties: false
+    - *tool_error
+- name: get_context_thread
+  description: |-
+    What: Get the latest 20 context entries of one thread.
+    Who: Any agent.
+    Where: The thread given by thread_id.
+    When: Resuming a topic or task, or after retrieve_context surfaced one of its entries.
+    Why: To reload the thread in one call instead of searching for each entry.
+    How: Returns {thread_id, entries: [{thread_id, context, created_at}]}, oldest first; empty entries mean nothing is stored under that thread_id.
+  input_schema:
+    type: object
+    properties:
+      thread_id:
+        type: string
+        format: uuid
+        description: UUID of the thread to load.
+    required: [thread_id]
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      properties:
+        thread_id:
+          type: string
+          format: uuid
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              thread_id:
+                type: string
+                format: uuid
+              context:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+            required: [thread_id, context]
+            additionalProperties: false
+      required: [thread_id, entries]
+      additionalProperties: false
+    - *tool_error
+- name: record_decision
+  description: |-
+    What: Save an architecture decision with its situation, choice, rationale, options, trade-offs, facts and practices.
+    Who: Any agent, with the user's agreement.
+    Where: Server-side store, shared across sessions.
+    When: A design or technology choice that later work should stay consistent with is settled or proposed, or an earlier decision is replaced.
+    Why: So later sessions follow the choice, or knowingly revisit it, instead of re-debating or contradicting it.
+    How: Returns {decision_id}; keep decision_id for review_decision.
+  input_schema:
+    type: object
+    properties:
+      title:
+        type: string
+        minLength: 1
+        description: Short name of the decision, e.g. "Use Weaviate for context storage".
+      status:
+        type: string
+        enum: [proposed, accepted]
+        description: accepted once the user agrees; proposed while still under discussion.
+      Details:
+        type: object
+        properties:
+          situation:
+            type: string
+            minLength: 1
+            description: The problem, constraints and forces that called for a decision.
+          decision:
+            type: string
+            minLength: 1
+            description: What was decided, stated so it can be followed.
+          rationale:
+            type: string
+            minLength: 1
+            description: Why this option won over the others.
+          options:
+            type: array
+            description: Options that were considered, including the chosen one.
+            items:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                pros:
+                  type: array
+                  items:
+                    type: string
+                cons:
+                  type: array
+                  items:
+                    type: string
+                verdict:
+                  type: string
+                  description: Why it was chosen or rejected.
+              required: [name]
+              additionalProperties: false
+          tradeoffs:
+            type: array
+            items:
+              type: string
+              minLength: 1
+            description: What was knowingly given up or accepted as a cost.
+          facts:
+            type: array
+            description: Verified facts the decision relies on.
+            items:
+              type: object
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                source:
+                  type: string
+                  description: Where it was confirmed (URL, doc, file path, benchmark).
+              required: [text]
+              additionalProperties: false
+          practices:
+            type: array
+            description: Best practices or standards applied.
+            items:
+              type: object
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                source:
+                  type: string
+                  description: Where the practice comes from.
+              required: [text]
+              additionalProperties: false
+        required: [situation, decision, rationale]
+        additionalProperties: false
+      tags:
+        type: array
+        items:
+          type: string
+          minLength: 1
+        description: Scope labels such as component, layer or technology. Searched as text by retrieve_decisions.
+      supersedes:
+        type: string
+        format: uuid
+        description: decision_id of the current decision this one replaces; take it from retrieve_decisions, since an outdated one leaves two current decisions.
+    required: [title, status, Details]
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      properties:
+        decision_id:
+          type: string
+          format: uuid
+      required: [decision_id]
+      additionalProperties: false
+    - *tool_error
+- name: retrieve_decisions
+  description: |-
+    What: Search recorded architecture decisions by meaning and keywords.
+    Who: Any agent.
+    Where: Current decisions only (accepted and proposed); superseded ones are excluded.
+    When: Before making or proposing a design or technology choice, or when the user questions an earlier one.
+    Why: To stay consistent with what was agreed and avoid repeating choices that held up poorly.
+    How: Returns {decisions}, highest score first. Raise decisions with a review score of 2 or lower with the user.
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        minLength: 1
+        description: The situation or choice you are facing.
+      top_n:
+        type: integer
+        minimum: 1
+        maximum: 20
+        description: Maximum number of decisions to return. Default 20.
+    required: [query]
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      properties:
+        decisions:
+          type: array
+          description: Nearest current decisions, not confirmed matches; judge each one. Empty means no current decision is stored.
+          items:
+            type: object
+            properties:
+              decision_id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              status:
+                type: string
+                enum: [proposed, accepted]
+              tags:
+                type: array
+                items:
+                  type: string
+              supersedes:
+                type: string
+                format: uuid
+              created_at:
+                type: string
+                format: date-time
+              Details:
+                type: object
+                properties:
+                  situation:
+                    type: string
+                  decision:
+                    type: string
+                  rationale:
+                    type: string
+                  options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        pros:
+                          type: array
+                          items:
+                            type: string
+                        cons:
+                          type: array
+                          items:
+                            type: string
+                        verdict:
+                          type: string
+                      required: [name]
+                      additionalProperties: false
+                  tradeoffs:
+                    type: array
+                    items:
+                      type: string
+                  facts:
+                    type: array
+                    items: *sourced_note
+                  practices:
+                    type: array
+                    items: *sourced_note
+                required: [situation, decision, rationale]
+                additionalProperties: false
+              review: *decision_review
+              score:
+                type: number
+                description: How far to trust this decision for this search; a well-reviewed decision outranks a closer match. Compare within one search only.
+            required: [decision_id, title, status, created_at, Details, score]
+            additionalProperties: false
+      required: [decisions]
+      additionalProperties: false
+    - *tool_error
+- name: review_decision
+  description: |-
+    What: Record how well a past decision held up.
+    Who: Any agent, based on the user's feedback.
+    Where: The decision given by decision_id.
+    When: The user accepts, adjusts or rejects work that followed a decision, or confirms it works well.
+    Why: So later agents know how well the decision holds up now, and how far to trust it.
+    How: Returns {decision_id}. An unknown decision_id is an error. If the decision was abandoned, record its replacement with record_decision.
+  input_schema:
+    type: object
+    properties:
+      decision_id:
+        type: string
+        format: uuid
+        description: The decision being reviewed.
+      score:
+        type: integer
+        minimum: 1
+        maximum: 5
+        description: How well the decision holds up now, from 5 (worked as decided) to 1 (failed or rejected); replaces the earlier review.
+      reason:
+        type: string
+        minLength: 1
+        description: What the user asked for or said, and why.
+    required: [decision_id, score, reason]
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      properties:
+        decision_id:
+          type: string
+          format: uuid
+      required: [decision_id]
+      additionalProperties: false
+    - *tool_error
